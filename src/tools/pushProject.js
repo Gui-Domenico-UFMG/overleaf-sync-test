@@ -1,5 +1,5 @@
-import { getOverleafCookies } from '../extractCookies.js';
 import { getBrowser, ensureLoggedIn, saveSession } from '../browser.js';
+import { listFiles } from './listFiles.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -7,15 +7,13 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Envia arquivos locais modificados de volta para o Overleaf (versão gratuita).
+ * Envia arquivos locais editados de volta para o Overleaf (versão gratuita).
  *
- * Estratégia para cada arquivo .tex / .bib:
- *   1. Obtém o docId via listFiles (metadados do projeto)
- *   2. Envia o conteúdo via POST /project/:id/doc/:docId (rota interna)
- *      com cookies do Firefox injetados no Playwright
+ * Docs de texto (.tex, .bib, .cls, .sty):
+ *   POST /project/:id/doc/:docId  com CSRF token via Playwright
  *
- * Estratégia para arquivos binários (imagens, PDFs):
- *   Upload via formulário multipart POST /project/:id/upload
+ * Arquivos binários (imagens, PDFs):
+ *   POST /project/:id/upload  via FormData multipart com Playwright
  */
 export async function pushProject({ projectId, localDir, files }) {
   if (!projectId) throw new Error('projectId é obrigatório');
@@ -28,21 +26,18 @@ export async function pushProject({ projectId, localDir, files }) {
     throw new Error(`Pasta local não encontrada: ${srcDir}. Faça um overleaf_pull_project primeiro.`);
   }
 
-  // Listar arquivos a enviar
-  let targetFiles = files;
-  if (!targetFiles || targetFiles.length === 0) {
-    targetFiles = walkDir(srcDir);
+  const targetFiles = (files && files.length > 0) ? files : walkDir(srcDir);
+
+  // FIX: obter browser UMA vez fora do loop
+  const { page, context } = await getBrowser();
+  await ensureLoggedIn(page, context);
+
+  // FIX: navegar para o projeto UMA vez e aguardar carregamento completo
+  if (!page.url().includes(`/project/${projectId}`)) {
+    await page.goto(`https://www.overleaf.com/project/${projectId}`, { waitUntil: 'networkidle' });
   }
 
-  // Obter cookies do Firefox para autenticação HTTP direta
-  const cookies = await getOverleafCookies();
-  if (!cookies || cookies.length === 0) {
-    throw new Error('Nenhum cookie do Overleaf encontrado no Firefox. Faça login no Overleaf pelo Firefox primeiro.');
-  }
-  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-
-  // Obter lista de docs do projeto (docId por caminho)
-  const { listFiles } = await import('./listFiles.js');
+  // Obter lista de docs remotos para mapear caminho -> docId
   const remoteFiles = await listFiles({ projectId });
   const docMap = {};
   for (const f of remoteFiles) {
@@ -63,22 +58,18 @@ export async function pushProject({ projectId, localDir, files }) {
     const isTextDoc = ['.tex', '.bib', '.cls', '.sty', '.txt', '.md'].includes(ext);
 
     if (isTextDoc) {
-      // --- Envio de documento texto via POST /doc/:docId ---
       const remote = docMap[relPath] || docMap[path.basename(relPath)];
       if (!remote || !remote.id) {
-        results.push({ file: relPath, status: 'erro', reason: 'docId não encontrado no projeto remoto. Arquivo novo? Use overleaf_upload_file.' });
+        results.push({
+          file: relPath,
+          status: 'erro',
+          reason: 'docId não encontrado no projeto remoto. Arquivo novo não suportado ainda.',
+        });
         continue;
       }
 
       const content = fs.readFileSync(fullPath, 'utf-8');
       const lines = content.split('\n');
-
-      // CSRF token via meta tag (precisa do Playwright para pegar)
-      const { page, context } = await getBrowser();
-      await ensureLoggedIn(page, context);
-      if (!page.url().includes(`/project/${projectId}`)) {
-        await page.goto(`https://www.overleaf.com/project/${projectId}`, { waitUntil: 'networkidle' });
-      }
 
       const pushResult = await page.evaluate(async ({ projectId, docId, lines }) => {
         const csrf = document.querySelector('meta[name="ol-csrfToken"]')?.getAttribute('content');
@@ -110,22 +101,15 @@ export async function pushProject({ projectId, localDir, files }) {
       });
 
     } else {
-      // --- Upload de arquivo binário via multipart ---
+      // Arquivo binário: upload via FormData
       const fileBuffer = fs.readFileSync(fullPath);
       const base64 = fileBuffer.toString('base64');
       const mimeType = guessMime(ext);
-
-      // Usar fetch nativo com FormData via Playwright (cookies já injetados)
-      const { page, context } = await getBrowser();
-      await ensureLoggedIn(page, context);
-      if (!page.url().includes(`/project/${projectId}`)) {
-        await page.goto(`https://www.overleaf.com/project/${projectId}`, { waitUntil: 'networkidle' });
-      }
+      const fileName = path.basename(relPath);
 
       const uploadResult = await page.evaluate(async ({ projectId, fileName, base64, mimeType }) => {
         const csrf = document.querySelector('meta[name="ol-csrfToken"]')?.getAttribute('content');
 
-        // Reconstruir o arquivo a partir do base64
         const byteChars = atob(base64);
         const byteArr = new Uint8Array(byteChars.length);
         for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
@@ -153,7 +137,7 @@ export async function pushProject({ projectId, localDir, files }) {
           } catch {}
         }
         return { ok: false };
-      }, { projectId, fileName: path.basename(relPath), base64, mimeType });
+      }, { projectId, fileName, base64, mimeType });
 
       results.push({
         file: relPath,
@@ -188,8 +172,12 @@ function walkDir(dir, base = '') {
 
 function guessMime(ext) {
   const map = {
-    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif', '.pdf': 'application/pdf', '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.pdf': 'application/pdf',
+    '.svg': 'image/svg+xml',
     '.eps': 'application/postscript',
   };
   return map[ext] || 'application/octet-stream';

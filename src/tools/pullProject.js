@@ -3,13 +3,13 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Baixa o ZIP completo do projeto Overleaf e extrai localmente.
- * Usa a rota /project/:id/download/zip com cookies do Firefox.
- * Rota confirmada funcionando (Status 200).
+ * Rota /project/:id/download/zip confirmada funcionando (Status 200).
  */
 export async function pullProject({ projectId, outputDir }) {
   if (!projectId) throw new Error('projectId é obrigatório');
@@ -18,19 +18,14 @@ export async function pullProject({ projectId, outputDir }) {
     ? path.resolve(outputDir)
     : path.resolve(__dirname, '..', '..', 'projects', projectId);
 
-  // Montar header Cookie a partir dos cookies do Firefox
   const cookies = await getOverleafCookies();
   if (!cookies || cookies.length === 0) {
     throw new Error('Nenhum cookie do Overleaf encontrado no Firefox. Faça login no Overleaf pelo Firefox primeiro.');
   }
 
-  const cookieHeader = cookies
-    .map(c => `${c.name}=${c.value}`)
-    .join('; ');
-
+  const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
   const url = `https://www.overleaf.com/project/${projectId}/download/zip`;
 
-  // Usar fetch nativo do Node.js 18+
   const response = await fetch(url, {
     method: 'GET',
     headers: {
@@ -45,25 +40,27 @@ export async function pullProject({ projectId, outputDir }) {
     throw new Error(`Falha ao baixar ZIP: HTTP ${response.status} ${response.statusText}`);
   }
 
-  // Salvar ZIP em arquivo temporário
   const tempZip = path.join(os.tmpdir(), `overleaf_${projectId}_${Date.now()}.zip`);
   const buffer = Buffer.from(await response.arrayBuffer());
   fs.writeFileSync(tempZip, buffer);
 
-  // Extrair ZIP
   if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
-  // Extração nativa usando o módulo zlib + stream (sem dependência extra)
-  // Para extração de ZIP, usamos a API do Node.js com child_process como fallback
+  // FIX: try/catch explícito para dynamic import do adm-zip
   try {
-    // Tenta usar adm-zip se disponível
-    const { default: AdmZip } = await import('adm-zip').catch(() => ({ default: null }));
+    let AdmZip;
+    try {
+      const mod = await import('adm-zip');
+      AdmZip = mod.default;
+    } catch {
+      AdmZip = null;
+    }
+
     if (AdmZip) {
       const zip = new AdmZip(tempZip);
       zip.extractAllTo(destDir, true);
     } else {
-      // Fallback: usa unzip do sistema (Linux/Mac) ou PowerShell (Windows)
-      const { execSync } = await import('child_process');
+      // Fallback PowerShell (Windows) ou unzip (Linux/Mac)
       if (process.platform === 'win32') {
         execSync(`powershell -command "Expand-Archive -Path '${tempZip}' -DestinationPath '${destDir}' -Force"`);
       } else {
@@ -71,10 +68,10 @@ export async function pullProject({ projectId, outputDir }) {
       }
     }
   } finally {
-    fs.unlinkSync(tempZip);
+    // Sempre remove o ZIP temporário mesmo se a extração falhar
+    try { fs.unlinkSync(tempZip); } catch {}
   }
 
-  // Listar arquivos extraídos
   const extracted = [];
   function walk(dir, base = '') {
     for (const entry of fs.readdirSync(dir)) {
