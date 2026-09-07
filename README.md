@@ -120,3 +120,16 @@ node src/index.js
 ---
 
 *Nota para a próxima IA: A rota `/project/:id/download/zip` está confirmada funcionando com cookies do Firefox Store. Implemente `pullProject.js` usando `node-fetch` + `adm-zip` para download e extração. O push para Overleaf Free deve usar Playwright para upload de arquivos individuais.*
+
+
+## 5. Falha no Push (Erro documentado)
+Ao testar o envio de volta para o Overleaf (push), o processo estourou o erro: TypeError: remoteFiles is not iterable. Isso acontece porque o pushProject.js depende do listFiles.js, mas a listagem de arquivos está QUEBRADA.
+
+**Por que a listagem quebrou?**
+O Overleaf removeu a variável global window.projectData que o Playwright usava para coletar a árvore de arquivos e seus respectivos IDs (docId). Como não conseguimos obter o docId, é impossível usar a API para enviar o código de volta.
+
+**Próximo Passo (Solução para a próxima IA):**
+Para fazer o PUSH de arquivos de texto, a melhor rota agora é usar **Edição Visual via Playwright**:
+1. Navegar até o projeto.
+2. Localizar o arquivo na árvore esquerda pelo nome e clicar nele.
+3. Injetar o texto modificado diretamente no editor do frontend (ex: simulando o CodeMirror ou disparando eventos). Isso elimina a necessidade de descobrir os IDs internos da API.
