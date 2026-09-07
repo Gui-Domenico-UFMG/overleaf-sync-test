@@ -1,0 +1,1 @@
+{"name":"overleaf_list_files","description":"Lista todos os arquivos de um projeto Overleaf","parameters":{"$schema":"http://json-schema.org/draft-07/schema#","properties":{"projectId":{"description":"ID do projeto Overleaf (da URL: /project/ESTE_ID)","type":"string"}},"required":["projectId"],"type":"object"}}

@@ -1,0 +1,1 @@
+{"name":"overleaf_compile","description":"Compila (gera PDF) um projeto Overleaf e retorna o status","parameters":{"$schema":"http://json-schema.org/draft-07/schema#","properties":{"projectId":{"description":"ID do projeto Overleaf","type":"string"}},"required":["projectId"],"type":"object"}}

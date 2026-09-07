@@ -1,0 +1,1 @@
+{"name":"overleaf_project_info","description":"Mostra informações detalhadas de um projeto Overleaf (nome, dono, colaboradores, compilador)","parameters":{"$schema":"http://json-schema.org/draft-07/schema#","properties":{"projectId":{"description":"ID do projeto Overleaf","type":"string"}},"required":["projectId"],"type":"object"}}
