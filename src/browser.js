@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { getOverleafCookies } from './extractCookies.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSION_DIR = path.resolve(__dirname, '..', '.playwright-session');
@@ -17,19 +18,25 @@ export async function getBrowser() {
 
   _browser = await chromium.launch({ headless: true });
   _context = await _browser.newContext({
-    storageState: fs.existsSync(path.join(SESSION_DIR, 'state.json'))
-      ? path.join(SESSION_DIR, 'state.json')
-      : undefined,
     userAgent:
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
   });
+  
+  // Injetar cookies do Firefox
+  const cookies = await getOverleafCookies();
+  if (cookies && cookies.length > 0) {
+    await _context.addCookies(cookies);
+    console.log(`[MCP] ${cookies.length} cookies injetados a partir do Firefox (Store).`);
+  } else {
+    console.log('[MCP] Nenhum cookie encontrado do Firefox. Pode ser necessário login.');
+  }
+
   _page = await _context.newPage();
   return { browser: _browser, context: _context, page: _page };
 }
 
 export async function saveSession() {
-  if (!_context) return;
-  await _context.storageState({ path: path.join(SESSION_DIR, 'state.json') });
+  // Não precisamos salvar sessão no arquivo, pois lemos do Firefox a cada inicialização
 }
 
 export async function ensureLoggedIn(page, context) {
@@ -37,7 +44,7 @@ export async function ensureLoggedIn(page, context) {
   const url = page.url();
   if (url.includes('/login')) {
     throw new Error(
-      'Sessão expirada. Execute: node src/login.js  para fazer login interativo e salvar a sessão.'
+      'Sessão expirada ou cookies inválidos. Por favor, faça login no seu Firefox.'
     );
   }
 }
