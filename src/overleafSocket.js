@@ -12,7 +12,10 @@
  *             https://github.com/NiccoloSalvini/overleaf-mcp
  */
 
-import { io } from 'socket.io-client';
+// socket.io-client@2 exporta a função `io` como export default E como
+// propriedade `.io` do módulo CJS. Com ESM + "type":"module" no package.json
+// o import default funciona corretamente.
+import io from 'socket.io-client';
 import { getOverleafCookies } from './extractCookies.js';
 
 const BASE_URL = 'https://www.overleaf.com';
@@ -32,6 +35,18 @@ export async function getProjectFilesViaSocket(projectId) {
     .join('; ');
 
   return new Promise((resolve, reject) => {
+    // BUG CORRIGIDO: `socket` não pode ser referenciado no timer antes de ser
+    // definido. O timer agora é criado DEPOIS da declaração do socket,
+    // garantindo que a referência existe quando o timeout disparar.
+    const socket = io(BASE_URL, {
+      // Polling é obrigatório: o Overleaf usa engine.io v3 que não negocia
+      // upgrade para websocket quando acessado fora do browser.
+      transports: ['polling'],
+      extraHeaders: { cookie: cookieHeader },
+      reconnection: false,
+      timeout: TIMEOUT_MS,
+    });
+
     const timer = setTimeout(() => {
       socket.disconnect();
       reject(new Error(
@@ -39,14 +54,6 @@ export async function getProjectFilesViaSocket(projectId) {
         'Verifique se os cookies do Firefox estão frescos.'
       ));
     }, TIMEOUT_MS);
-
-    const socket = io(BASE_URL, {
-      // Forçar transport polling para compatibilidade com o protocolo legado do Overleaf
-      transports: ['polling'],
-      extraHeaders: { cookie: cookieHeader },
-      reconnection: false,
-      timeout: TIMEOUT_MS,
-    });
 
     socket.on('connect', () => {
       socket.emit('joinProject', { project_id: projectId }, (error, projectInfo) => {

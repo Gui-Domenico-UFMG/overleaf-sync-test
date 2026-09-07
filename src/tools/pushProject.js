@@ -17,7 +17,7 @@ const BINARY_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.pdf', '.svg', '.eps', '.
  *
  * Fluxo:
  *   1. Socket.IO joinProject → obtém docIds reais
- *   2. Playwright → abre página do projeto → extrai csrfToken
+ *   2. Playwright → abre página do projeto → aguarda csrfToken estar presente no DOM
  *   3. fetch POST /project/{id}/doc/{docId} → envia conteúdo linha a linha
  *
  * Arquivos binários são pulados e listados para upload manual.
@@ -56,7 +56,7 @@ export async function pushProject({ projectId, localDir, files }) {
     docMap[f.name] = f;
   }
 
-  // 2. Abrir Playwright para obter csrfToken (necessário para o POST)
+  // 2. Abrir Playwright para obter csrfToken
   const { page, context } = await getBrowser();
   await ensureLoggedIn(page, context);
 
@@ -66,6 +66,14 @@ export async function pushProject({ projectId, localDir, files }) {
       { waitUntil: 'domcontentloaded' }
     );
   }
+
+  // BUG CORRIGIDO: `domcontentloaded` é cedo demais — as metas `ol-*`
+  // são injetadas pelo React após o HTML inicial. Aguardamos a meta
+  // ol-csrfToken aparecer no DOM antes de continuar (timeout 10s).
+  await page.waitForSelector('meta[name="ol-csrfToken"]', { timeout: 10000 }).catch(() => {
+    // Se não aparecer, continuamos mesmo assim — o fetch vai tentar sem CSRF
+    // e o erro será capturado por arquivo individual.
+  });
 
   const results = [];
 
