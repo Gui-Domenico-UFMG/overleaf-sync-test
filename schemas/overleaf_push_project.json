@@ -1,0 +1,24 @@
+{
+  "name": "overleaf_push_project",
+  "description": "Envia arquivos locais modificados de volta para o Overleaf (versão gratuita). Compara os arquivos locais com o snapshot do último pull e faz upload de cada arquivo alterado via Playwright.",
+  "parameters": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "description": "ID do projeto Overleaf (da URL: /project/ESTE_ID)"
+      },
+      "localDir": {
+        "type": "string",
+        "description": "Pasta local com os arquivos editados. Padrão: ./projects/<projectId>"
+      },
+      "files": {
+        "type": "array",
+        "description": "Lista opcional de arquivos específicos para enviar (ex: ['main.tex', 'sections/intro.tex']). Se omitido, envia todos os arquivos .tex e .bib modificados.",
+        "items": { "type": "string" }
+      }
+    },
+    "required": ["projectId"]
+  }
+}
