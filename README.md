@@ -22,3 +22,15 @@ Para dar sequência a este projeto, a próxima IA (ou desenvolvedor) deverá rea
 
 ---
 *Nota para a próxima IA: Todo o código e arquivos gerados até este ponto foram mantidos. Utilize o contexto acima para continuar o desenvolvimento focado na integração via cookies do Firefox.*
+
+
+## 4. Atualização Importante sobre Erros 404 (Análise)
+Ao testar a extração de cookies do Firefox, verificamos que os cookies funcionam e evitam o redirecionamento de login. No entanto, o Overleaf **removeu completamente os endpoints REST /api/project e /api/project/:id**. 
+
+Além disso, o HTML inicial carregado em /project/:id não contém mais a árvore de arquivos (ileTree ou ootFolder) em tags <script>. O Overleaf agora carrega a estrutura do projeto e os documentos exclusivamente via **Socket.io (ShareJS)** após o carregamento da página.
+
+**Conclusão para a próxima IA:**
+A abordagem via fetch() (cliente HTTP simples) não é mais viável sem implementar um cliente complexo de WebSockets/Socket.io. A melhor alternativa é **retomar o uso do Playwright** (como planejado inicialmente neste repositório) para: 
+1. Injetar os cookies do Firefox extraídos;
+2. Abrir a página do projeto;
+3. Extrair os dados da árvore de arquivos inspecionando o DOM do editor (ex: .file-tree) ou executando scripts page.evaluate() no contexto da página para ler o estado do frontend.
