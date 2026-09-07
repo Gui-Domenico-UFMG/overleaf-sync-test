@@ -55,6 +55,23 @@ export async function pushProject({ projectId, localDir, files }) {
 
   // Mapa caminho/nome → docId
   const remoteFiles = await listFiles({ projectId });
+
+  // [DEBUG PUSH] diagnóstico de remoteFiles ANTES do loop
+  console.log('[DEBUG PUSH]');
+  console.log('  projectId=', projectId);
+  console.log('  remoteFilesType=', typeof remoteFiles);
+  console.log('  isArray=', Array.isArray(remoteFiles));
+  console.log('  remoteFiles=', JSON.stringify(remoteFiles, null, 2));
+
+  // Lançar erro explicativo se remoteFiles não for array (NÃO altera fluxo em caso positivo)
+  if (!Array.isArray(remoteFiles)) {
+    throw new Error(
+      `[DIAGNÓSTICO] listFiles() não retornou um array. ` +
+      `Tipo recebido: ${typeof remoteFiles}. ` +
+      `Conteúdo: ${JSON.stringify(remoteFiles)}`
+    );
+  }
+
   const docMap = {};
   for (const f of remoteFiles) {
     docMap[f.path] = f;
@@ -83,10 +100,13 @@ export async function pushProject({ projectId, localDir, files }) {
     const content = fs.readFileSync(fullPath, 'utf-8');
     const lines = content.split('\n');
 
+    // [DEBUG HTTP] instrumentar o fetch de push dentro do page.evaluate
     const pushResult = await page.evaluate(async ({ projectId, docId, lines }) => {
       const csrf = document.querySelector('meta[name="ol-csrfToken"]')?.getAttribute('content');
       const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
       if (csrf) headers['X-CSRF-Token'] = csrf;
+
+      console.log('[DEBUG HTTP] csrf encontrado=', !!csrf);
 
       for (const url of [
         `/api/v1/project/${projectId}/doc/${docId}`,
@@ -99,15 +119,18 @@ export async function pushProject({ projectId, localDir, files }) {
             headers,
             body: JSON.stringify({ lines }),
           });
+          console.log('[DEBUG HTTP] status=', res.status, 'url=', url);
           if (res.ok) return { ok: true, status: res.status, url };
-        } catch {}
+        } catch (e) {
+          console.log('[DEBUG HTTP] ERRO no fetch para url=', url, 'erro=', e.message);
+        }
       }
       return { ok: false };
     }, { projectId, docId: remote.id, lines });
 
     results.push({
       file: relPath,
-      status: pushResult.ok ? '✅ enviado' : '❌ erro',
+      status: pushResult.ok ? '\u2705 enviado' : '\u274c erro',
       docId: remote.id,
       endpoint: pushResult.url || null,
     });
@@ -119,13 +142,13 @@ export async function pushProject({ projectId, localDir, files }) {
 }
 
 function buildResult(textResults, binaryFiles, unknownFiles, projectId) {
-  const enviados = textResults.filter(r => r.status.startsWith('✅')).length;
-  const erros    = textResults.filter(r => r.status.startsWith('❌')).length;
+  const enviados = textResults.filter(r => r.status.startsWith('\u2705')).length;
+  const erros    = textResults.filter(r => r.status.startsWith('\u274c')).length;
 
   const manualInstructions = binaryFiles.length > 0
     ? [
         '',
-        '📎 UPLOAD MANUAL NECESSÁRIO para arquivos binários:',
+        '\ud83d\udcce UPLOAD MANUAL NECESSÁRIO para arquivos binários:',
         ...binaryFiles.map(f => `   • ${f}`),
         '',
         'Como fazer:',
@@ -141,7 +164,7 @@ function buildResult(textResults, binaryFiles, unknownFiles, projectId) {
     textFiles: textResults,
     manualUploadRequired: binaryFiles.length > 0,
     binaryFiles: binaryFiles.length > 0 ? {
-      message: '⚠️ Estes arquivos precisam de upload manual no Overleaf (Add files → Upload):',
+      message: '\u26a0\ufe0f Estes arquivos precisam de upload manual no Overleaf (Add files → Upload):',
       files: binaryFiles,
       url: `https://www.overleaf.com/project/${projectId}`,
     } : null,
