@@ -1,24 +1,122 @@
-# Overleaf Firefox Cookie MCP (Work in Progress)
+# Overleaf MCP Server — Firefox Cookie + ZIP Architecture
 
-Este repositório documenta a construção de um servidor MCP (Model Context Protocol) para integração com o Overleaf. 
-
-## 1. O Trabalho Realizado Até Aqui
-- O ambiente do servidor MCP foi configurado.
-- Os schemas (estruturas) das ferramentas de interação com o Overleaf foram mapeados (ex: `overleaf_list_projects`, arquivos de leitura e escrita).
-- A primeira tentativa de conexão utilizava as rotas internas da API do Overleaf.
-- Arquivos base e testes iniciais (como o `main.tex`) já foram criados e configurados no repositório.
-
-## 2. Onde o Desenvolvimento Parou
-O projeto foi interrompido (bloqueado) porque os testes retornaram erros **404 (Página não encontrada)**. Descobriu-se que o Overleaf alterou ou removeu os endpoints internos de sua API na versão web. Como o Overleaf não possui uma API REST pública oficial, o modelo antigo de requisição simplesmente parou de funcionar.
-
-A conclusão técnica deste ponto foi: a melhor alternativa para contornar essa restrição de autenticação/acesso será extrair e utilizar os cookies da sessão ativa do navegador Firefox.
-
-## 3. O Que Ainda Precisa Ser Feito (Próximos Passos)
-Para dar sequência a este projeto, a próxima IA (ou desenvolvedor) deverá realizar as seguintes tarefas:
-1. **Extração de Cookies:** Criar um script/módulo que leia programaticamente os cookies de sessão do Overleaf salvos no perfil local do Mozilla Firefox.
-2. **Injeção de Sessão:** Atualizar o cliente HTTP do servidor MCP para injetar esses cookies do Firefox em todas as requisições enviadas ao Overleaf.
-3. **Mapeamento de Rotas:** Inspecionar a rede (via browser) e descobrir quais são as novas rotas/endpoints que o Overleaf usa internamente hoje para acessar projetos e compilar arquivos.
-4. **Atualizar Ferramentas:** Refatorar as chamadas das ferramentas do MCP (`list_projects`, `read_file`, etc.) para usarem as novas rotas descobertas com a sessão do Firefox.
+Servidor MCP para integração com o Overleaf via cookies do Firefox (Microsoft Store) e download de ZIP.
 
 ---
-*Nota para a próxima IA: Todo o código e arquivos gerados até este ponto foram mantidos. Utilize o contexto acima para continuar o desenvolvimento focado na integração via cookies do Firefox.*
+
+## ✅ Status Atual
+
+| Item | Status |
+|---|---|
+| Extração de cookies do Firefox (Store) | ✅ Funcionando |
+| Injeção de cookies no Playwright | ✅ Funcionando |
+| Rota `/project/ID/download/zip` | ✅ **Confirmada (Status 200)** |
+| Servidor MCP com 7 ferramentas | ✅ Implementado |
+| Ferramenta `overleaf_pull_project` (ZIP) | 🔜 Próximo passo |
+
+---
+
+## 🏗️ Arquitetura: ZIP-Pull + Push
+
+### Por que ZIP?
+A rota `/project/:id/download/zip` foi **testada e confirmada funcionando** com os cookies do Firefox.
+Ela retorna o projeto inteiro estruturado (`.tex`, `.bib`, imagens, subpastas) em um único request,
+sem depender de endpoints internos que foram removidos pelo Overleaf (erro 404).
+
+### Fluxo completo
+
+```
+┌─────────────────────────────────────────────┐
+│              ANTIGRAVITY (IA)               │
+└────────────────────┬────────────────────────┘
+                     │ chama MCP tool
+┌────────────────────▼────────────────────────┐
+│           SERVIDOR MCP (Node.js)            │
+│  cookies Firefox Store → autenticação HTTP  │
+└──────┬──────────────────────────────┬───────┘
+       │ GET /project/ID/download/zip │ POST endpoints
+┌──────▼──────────┐         ┌────────▼────────┐
+│  Overleaf.com   │         │  Playwright      │
+│  (ZIP download) │         │  (compile/write) │
+└──────┬──────────┘         └─────────────────┘
+       │ extrai ZIP
+┌──────▼──────────────────┐
+│  Pasta local do projeto  │
+│  (leitura/edição rápida) │
+└─────────────────────────┘
+```
+
+### Pull (Download)
+`overleaf_pull_project` → baixa ZIP → extrai em pasta local → IA lê/edita localmente (rápido, sem web scraping por arquivo).
+
+### Push (Upload de volta)
+- **Overleaf Premium**: `git push` nativo via sincronização Git do Overleaf.
+- **Overleaf Gratuito**: Playwright detecta arquivos modificados e substitui via upload de arquivos soltos.
+
+---
+
+## 📁 Estrutura do Projeto
+
+```
+overleaf-sync-test/
+├── package.json
+├── .gitignore
+├── README.md
+├── INSTALL.md
+├── main.tex
+├── schemas/                        ← schemas MCP das 7 ferramentas originais
+│   ├── overleaf_compile.json
+│   ├── overleaf_list_files.json
+│   ├── overleaf_list_projects.json
+│   ├── overleaf_project_info.json
+│   ├── overleaf_read_file.json
+│   ├── overleaf_read_file_by_id.json
+│   ├── overleaf_write_file.json
+│   └── overleaf_pull_project.json  ← NOVO
+└── src/
+    ├── index.js                    ← servidor MCP principal
+    ├── browser.js                  ← Playwright + injeção de cookies
+    ├── extractCookies.js           ← lê cookies.sqlite do Firefox Store
+    ├── login.js                    ← login interativo (fallback)
+    └── tools/
+        ├── listProjects.js
+        ├── projectInfo.js
+        ├── listFiles.js
+        ├── readFile.js
+        ├── readFileById.js
+        ├── writeFile.js
+        ├── compile.js
+        └── pullProject.js          ← PRÓXIMO A IMPLEMENTAR
+```
+
+---
+
+## 🔧 Ferramentas MCP Disponíveis
+
+| Ferramenta | Parâmetros | Descrição |
+|---|---|---|
+| `overleaf_list_projects` | — | Lista todos os projetos |
+| `overleaf_project_info` | `projectId` | Info detalhada do projeto |
+| `overleaf_list_files` | `projectId` | Lista arquivos do projeto |
+| `overleaf_read_file` | `projectId`, `filePath` | Lê arquivo pelo caminho |
+| `overleaf_read_file_by_id` | `projectId`, `docId` | Lê arquivo pelo ID |
+| `overleaf_write_file` | `projectId`, `filePath`, `content` | Escreve/atualiza arquivo |
+| `overleaf_compile` | `projectId` | Compila e retorna status |
+| `overleaf_pull_project` | `projectId`, `outputDir?` | **NOVO** — baixa ZIP e extrai localmente |
+
+---
+
+## 🚀 Instalação Rápida
+
+```bash
+npm install
+npx playwright install chromium
+node src/index.js
+```
+
+> A autenticação é automática via cookies do Firefox (Microsoft Store).
+> Certifique-se de estar logado no Overleaf pelo Firefox antes de iniciar.
+
+---
+
+*Nota para a próxima IA: A rota `/project/:id/download/zip` está confirmada funcionando com cookies do Firefox Store. Implemente `pullProject.js` usando `node-fetch` + `adm-zip` para download e extração. O push para Overleaf Free deve usar Playwright para upload de arquivos individuais.*

@@ -1,0 +1,19 @@
+{
+  "name": "overleaf_pull_project",
+  "description": "Baixa o ZIP completo de um projeto Overleaf e extrai os arquivos em uma pasta local. Usa a rota /project/:id/download/zip (confirmada funcionando).",
+  "parameters": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "string",
+        "description": "ID do projeto Overleaf (da URL: /project/ESTE_ID)"
+      },
+      "outputDir": {
+        "type": "string",
+        "description": "Caminho local onde o projeto será extraído. Padrão: ./projects/<projectId>"
+      }
+    },
+    "required": ["projectId"]
+  }
+}
