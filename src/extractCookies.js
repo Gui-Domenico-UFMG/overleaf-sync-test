@@ -65,16 +65,15 @@ export async function getOverleafCookies() {
         if (closeErr) console.warn('[Aviso] Erro ao fechar SQLite:', closeErr.message);
 
         const cookies = rows.map(row => ({
-          name: row.name,
-          value: row.value,
-          // Playwright exige domínio com ponto inicial para subdomínios
-          domain: row.domain.startsWith('.') ? row.domain : '.' + row.domain,
-          path: row.path,
-          expires: row.expires,
-          secure: row.secure === 1,
-          httpOnly: row.httpOnly === 1,
-          sameSite: 'Lax',
-        }));
+        name: row.name,
+        value: row.value,
+        domain: row.domain.startsWith('.') ? row.domain : '.' + row.domain, // Playwright prefere domínios com ponto inicial se for pra subdomínios
+        path: row.path,
+        expires: -1, // Definido como sessão (-1) para evitar erro no Playwright com timestamps gigantes
+        secure: row.secure === 1,
+        httpOnly: row.httpOnly === 1,
+        sameSite: 'Lax'
+      }));
 
         resolve(cookies);
       });

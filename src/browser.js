@@ -49,7 +49,7 @@ export async function ensureLoggedIn(page, context) {
   const jaEstaNoOverleaf = currentUrl.includes('overleaf.com') && !currentUrl.includes('/login');
 
   if (!jaEstaNoOverleaf) {
-    await page.goto('https://www.overleaf.com/project', { waitUntil: 'networkidle' });
+    await page.goto('https://www.overleaf.com/project', { waitUntil: 'domcontentloaded' });
   }
 
   const urlFinal = page.url();

@@ -8,7 +8,7 @@ export async function listProjects() {
   const { page, context } = await getBrowser();
   await ensureLoggedIn(page, context);
 
-  await page.goto('https://www.overleaf.com/project', { waitUntil: 'networkidle' });
+  await page.goto('https://www.overleaf.com/project', { waitUntil: 'domcontentloaded' });
 
   const projects = await page.evaluate(() => {
     // Overleaf injeta os dados em window._ol_project_list ou em elementos data-
@@ -52,7 +52,7 @@ export async function listProjects() {
           } catch { resolve(null); }
         }
       });
-      await page.reload({ waitUntil: 'networkidle' });
+      await page.reload({ waitUntil: 'domcontentloaded' });
       setTimeout(() => resolve(null), 8000);
     });
 

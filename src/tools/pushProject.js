@@ -50,7 +50,7 @@ export async function pushProject({ projectId, localDir, files }) {
   await ensureLoggedIn(page, context);
 
   if (!page.url().includes(`/project/${projectId}`)) {
-    await page.goto(`https://www.overleaf.com/project/${projectId}`, { waitUntil: 'networkidle' });
+    await page.goto(`https://www.overleaf.com/project/${projectId}`, { waitUntil: 'domcontentloaded' });
   }
 
   // Mapa caminho/nome → docId
