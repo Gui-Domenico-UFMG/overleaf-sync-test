@@ -39,6 +39,8 @@ export async function getOverleafCookies() {
   // Copia o arquivo para evitar lock do Firefox no arquivo original
   const tempDbPath = path.join(os.tmpdir(), `firefox_cookies_copy_${Date.now()}.sqlite`);
   fs.copyFileSync(dbPath, tempDbPath);
+  if (fs.existsSync(dbPath + '-wal')) fs.copyFileSync(dbPath + '-wal', tempDbPath + '-wal');
+  if (fs.existsSync(dbPath + '-shm')) fs.copyFileSync(dbPath + '-shm', tempDbPath + '-shm');
 
   return new Promise((resolve, reject) => {
     const db = new sqlite3.Database(tempDbPath, sqlite3.OPEN_READONLY, (err) => {
@@ -60,6 +62,8 @@ export async function getOverleafCookies() {
       // No Windows o SQLite mantém lock no arquivo até o close() completar
       db.close((closeErr) => {
         try { fs.unlinkSync(tempDbPath); } catch {}
+        try { fs.unlinkSync(tempDbPath + '-wal'); } catch {}
+        try { fs.unlinkSync(tempDbPath + '-shm'); } catch {}
 
         if (err) return reject(err);
         if (closeErr) console.warn('[Aviso] Erro ao fechar SQLite:', closeErr.message);
